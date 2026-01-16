@@ -136,3 +136,5 @@ except FileNotFoundError:
     st.error(f"❌ 데이터 파일을 찾을 수 없습니다: {file_path}")
 except Exception as e:
     st.error(f"❌ 오류가 발생했습니다: {e}")
+
+    
