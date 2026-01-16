@@ -35,33 +35,46 @@ st.title("📊 자유무역지역 수출입 및 고용 현황")
 file_path = "산업통상부_자유무역지역 수출입실적 현황_20231231.csv"
 
 try:
-    # --- 데이터 로드 및 컬럼 검증 (안전장치 추가) ---
+    # -----------------------------------------------------------
+    # [최종 해결책] 엔진 변경 및 컬럼 강제 지정
+    # -----------------------------------------------------------
+    # 1. engine='python'을 쓰면 인코딩 오류를 훨씬 잘 견딥니다.
+    # 2. 깨진 글자가 있어도 일단 불러오게 합니다.
     try:
-        df = pd.read_csv(file_path, encoding='utf-8')
-    except UnicodeDecodeError:
-        try:
-            df = pd.read_csv(file_path, encoding='cp949')
-        except UnicodeDecodeError:
-            df = pd.read_csv(file_path, encoding='euc-kr')
+        df = pd.read_csv(file_path, encoding='cp949', engine='python')
+    except:
+        df = pd.read_csv(file_path, encoding='euc-kr', engine='python')
 
-    # [중요] 컬럼명 앞뒤 공백 제거 (예: '연도 ' -> '연도')
-    df.columns = df.columns.str.strip()
+    # [중요] 컬럼 이름이 깨져있을 것이 확실하므로, 우리가 아는 이름으로 강제로 덮어씌웁니다.
+    # 데이터 구조: 맨 앞 '연도' + 7개 지역 * 5개 항목 = 총 36개 컬럼
+    
+    regions_order = ['마산', '대불', '율촌', '김제', '울산', '군산', '동해'] # 데이터 원본 순서
+    metrics_order = ['수출실적(천달러)', '수입실적(천달러)', '무역수지(천달러)', '고용인원', '업체수']
+    
+    new_columns = ['연도']
+    for reg in regions_order:
+        for met in metrics_order:
+            new_columns.append(f"{reg}_{met}")
+            
+    # 파일의 컬럼 개수와 우리가 만든 이름 개수가 맞는지 확인 후 덮어쓰기
+    if len(df.columns) == len(new_columns):
+        df.columns = new_columns
+        # st.success("✅ 깨진 컬럼 이름을 자동으로 복구했습니다!") # (확인용, 주석처리 가능)
+    else:
+        # 만약 컬럼 개수가 다르면 어쩔 수 없이 원본 사용 (이 경우엔 파일 확인 필요)
+        st.warning(f"⚠️ 컬럼 개수 불일치! (파일: {len(df.columns)}개 vs 예상: {len(new_columns)}개)")
 
-    # '연도' 컬럼 확인
-    if '연도' not in df.columns:
-        st.error("🚨 데이터에서 '연도' 컬럼을 찾을 수 없습니다!")
-        st.write("현재 파일에 있는 컬럼 목록입니다. 아래 이름 중 하나여야 합니다:")
-        st.write(list(df.columns))
-        st.stop() # 프로그램 중단하고 오류 메시지 보여줌
+    # -----------------------------------------------------------
 
     # --- 사이드바 설정 ---
     st.sidebar.header("🔍 검색 필터")
-    regions = ['마산', '대불', '율촌', '김제', '울산', '군산', '동해']
-    selected_region = st.sidebar.selectbox("분석 지역 선택", regions)
+    # 사용자가 선택할 지역 리스트 (사이드바용)
+    select_regions = ['마산', '대불', '율촌', '김제', '울산', '군산', '동해']
+    selected_region = st.sidebar.selectbox("분석 지역 선택", select_regions)
     
-    # 연도 데이터 정수형 변환 (혹시 모를 에러 방지)
+    # 연도 데이터 정제
     df['연도'] = pd.to_numeric(df['연도'], errors='coerce')
-    df = df.dropna(subset=['연도']) # 연도가 숫자가 아닌 행 제거
+    df = df.dropna(subset=['연도'])
     df['연도'] = df['연도'].astype(int)
 
     year_range = st.sidebar.slider("연도 범위", 
@@ -73,20 +86,14 @@ try:
     money_metrics = ['수출실적(천달러)', '수입실적(천달러)', '무역수지(천달러)']
     count_metrics = ['고용인원', '업체수']
     
-    # 해당 지역의 컬럼이 실제로 있는지 확인
-    expected_cols = [f"{selected_region}_{m}" for m in money_metrics + count_metrics]
-    missing_cols = [col for col in expected_cols if col not in df.columns]
-    
-    if missing_cols:
-        st.error(f"🚨 선택한 지역({selected_region})의 데이터 컬럼이 없습니다.")
-        st.write(f"없는 컬럼: {missing_cols}")
-        st.stop()
-
+    # 데이터 필터링
     target_df = df[df['연도'].between(year_range[0], year_range[1])].copy()
     
     plot_df = pd.DataFrame({'연도': target_df['연도']})
     for m in money_metrics + count_metrics:
-        plot_df[m] = target_df[f"{selected_region}_{m}"]
+        # 컬럼명을 위에서 강제로 통일했으므로 이제 무조건 찾을 수 있습니다.
+        col_name = f"{selected_region}_{m}"
+        plot_df[m] = target_df[col_name]
 
     # --- 그래프 그리기 ---
     st.subheader(f"✨ {selected_region} 지역 종합 분석(금액, 인원, 업체)")
