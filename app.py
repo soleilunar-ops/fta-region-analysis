@@ -35,25 +35,35 @@ st.title("📊 자유무역지역 수출입 및 고용 현황")
 file_path = "산업통상부_자유무역지역 수출입실적 현황_20231231.csv"
 
 try:
-    # -----------------------------------------------------------
-    # [수정된 부분] 인코딩 자동 감지 로직 적용
-    # -----------------------------------------------------------
+    # --- 데이터 로드 및 컬럼 검증 (안전장치 추가) ---
     try:
-        # 1. 먼저 utf-8로 시도 (요즘 표준)
         df = pd.read_csv(file_path, encoding='utf-8')
     except UnicodeDecodeError:
         try:
-            # 2. 실패하면 cp949로 시도 (윈도우 엑셀 저장 방식)
             df = pd.read_csv(file_path, encoding='cp949')
         except UnicodeDecodeError:
-            # 3. 그것도 안 되면 euc-kr로 시도 (옛날 방식)
             df = pd.read_csv(file_path, encoding='euc-kr')
-    # -----------------------------------------------------------
+
+    # [중요] 컬럼명 앞뒤 공백 제거 (예: '연도 ' -> '연도')
+    df.columns = df.columns.str.strip()
+
+    # '연도' 컬럼 확인
+    if '연도' not in df.columns:
+        st.error("🚨 데이터에서 '연도' 컬럼을 찾을 수 없습니다!")
+        st.write("현재 파일에 있는 컬럼 목록입니다. 아래 이름 중 하나여야 합니다:")
+        st.write(list(df.columns))
+        st.stop() # 프로그램 중단하고 오류 메시지 보여줌
 
     # --- 사이드바 설정 ---
     st.sidebar.header("🔍 검색 필터")
     regions = ['마산', '대불', '율촌', '김제', '울산', '군산', '동해']
     selected_region = st.sidebar.selectbox("분석 지역 선택", regions)
+    
+    # 연도 데이터 정수형 변환 (혹시 모를 에러 방지)
+    df['연도'] = pd.to_numeric(df['연도'], errors='coerce')
+    df = df.dropna(subset=['연도']) # 연도가 숫자가 아닌 행 제거
+    df['연도'] = df['연도'].astype(int)
+
     year_range = st.sidebar.slider("연도 범위", 
                                    int(df['연도'].min()), 
                                    int(df['연도'].max()), 
@@ -63,6 +73,15 @@ try:
     money_metrics = ['수출실적(천달러)', '수입실적(천달러)', '무역수지(천달러)']
     count_metrics = ['고용인원', '업체수']
     
+    # 해당 지역의 컬럼이 실제로 있는지 확인
+    expected_cols = [f"{selected_region}_{m}" for m in money_metrics + count_metrics]
+    missing_cols = [col for col in expected_cols if col not in df.columns]
+    
+    if missing_cols:
+        st.error(f"🚨 선택한 지역({selected_region})의 데이터 컬럼이 없습니다.")
+        st.write(f"없는 컬럼: {missing_cols}")
+        st.stop()
+
     target_df = df[df['연도'].between(year_range[0], year_range[1])].copy()
     
     plot_df = pd.DataFrame({'연도': target_df['연도']})
@@ -90,18 +109,13 @@ try:
     sns.lineplot(data=plot_df, x=ax1.get_xticks(), y='업체수', ax=ax2, 
                  marker='s', color='orange', linewidth=3, label='업체수')
     
-    # [수정 3] 중앙 우측 '고용인원' 글자 제거 (빈 문자열로 설정)
     ax2.set_ylabel('') 
-
-    # [수정 2] '인원 / 업체수'를 우측 하단(하늘색 위치)으로 이동 (가로 정렬)
-    # (1.0, -0.08) 좌표는 그래프 오른쪽 끝 아래를 의미합니다.
     ax2.text(1.0, -0.08, "인원 / 업체수", transform=ax2.transAxes, 
              ha="right", va="top", rotation=0, 
              fontsize=12, fontweight='bold', color='firebrick')
 
     ax2.legend(loc='upper right', bbox_to_anchor=(1, 1.15), ncol=2, frameon=False, prop={'family': plt.rcParams['font.family']})
     
-    # [수정 1] 제목 위치 조정 (pad를 50 -> 20으로 줄여서 아래로 내림)
     plt.title(f"{selected_region} 연도별 주요 실적 추이", fontsize=20, fontweight='bold', pad=20)
     ax1.set_xlabel("조회 연도")
     
@@ -113,6 +127,5 @@ try:
 
 except FileNotFoundError:
     st.error(f"❌ 데이터 파일을 찾을 수 없습니다: {file_path}")
-    st.info("GitHub 저장소에 파일이 제대로 올라갔는지(0kb가 아닌지) 확인해주세요.")
 except Exception as e:
     st.error(f"❌ 오류가 발생했습니다: {e}")
