@@ -35,8 +35,21 @@ st.title("📊 자유무역지역 수출입 및 고용 현황")
 file_path = "산업통상부_자유무역지역 수출입실적 현황_20231231.csv"
 
 try:
-    df = pd.read_csv(file_path, encoding='cp949')
-    
+    # -----------------------------------------------------------
+    # [수정된 부분] 인코딩 자동 감지 로직 적용
+    # -----------------------------------------------------------
+    try:
+        # 1. 먼저 utf-8로 시도 (요즘 표준)
+        df = pd.read_csv(file_path, encoding='utf-8')
+    except UnicodeDecodeError:
+        try:
+            # 2. 실패하면 cp949로 시도 (윈도우 엑셀 저장 방식)
+            df = pd.read_csv(file_path, encoding='cp949')
+        except UnicodeDecodeError:
+            # 3. 그것도 안 되면 euc-kr로 시도 (옛날 방식)
+            df = pd.read_csv(file_path, encoding='euc-kr')
+    # -----------------------------------------------------------
+
     # --- 사이드바 설정 ---
     st.sidebar.header("🔍 검색 필터")
     regions = ['마산', '대불', '율촌', '김제', '울산', '군산', '동해']
@@ -100,5 +113,6 @@ try:
 
 except FileNotFoundError:
     st.error(f"❌ 데이터 파일을 찾을 수 없습니다: {file_path}")
+    st.info("GitHub 저장소에 파일이 제대로 올라갔는지(0kb가 아닌지) 확인해주세요.")
 except Exception as e:
     st.error(f"❌ 오류가 발생했습니다: {e}")
